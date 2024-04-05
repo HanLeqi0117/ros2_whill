@@ -1,0 +1,33 @@
+whill_joy2:
+  ros__parameters:
+    axis_liner: 1
+    axis_angular: 0
+    buttons_deadman: 5  
+    scale_angular: 0.8
+    scale_linear: 0.567
+    buttons_stop: 0
+    buttons_rotation_R: 5
+    buttons_rotation_L: 2
+    buttons_straight: 2
+    # if true, permissible to use joystick to control
+    use_joycon: true
+    # main process rate
+    frequency: 10
+    # the duration between the time when LB and RB is pressed
+    pressed_duration: 2.0
+    # Sequentially, front(0 ~ 2): speed, acceleration, deceleration / back(3 ~ 5): speed, acceleration, deceleration / turn(6 ~ 8): speed, acceleration, deceleration
+    # speed rad/s acceleration rad/ss deceleration rad/ss (Motor)
+    # whill speed = motor speed * the radius(default: 0.1325m) of tire
+    # Speed limit: 8 ~ 60
+    # Acceleration limit: 10 ~ 90
+    # Deceleration limit: 10 ~ 160
+    speed_profie_config: [
+      10, 16, 48, 10, 16, 40, 8, 56, 72,
+      15, 16, 64, 10, 16, 56, 10, 56, 72,
+      30, 16, 82, 20, 16, 64, 15, 56, 72,
+      45, 16, 90, 20, 24, 64, 18, 56, 72,
+      57, 16, 90, 20, 24, 64, 14, 28, 64,
+      15, 16, 64, 10, 16, 56, 10, 56, 72
+    ]
+    # default speed mode. limit: 0 ~ 6
+    speed_mode: 3

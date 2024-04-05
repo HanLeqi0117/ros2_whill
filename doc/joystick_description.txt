@@ -1,0 +1,20 @@
+axes[0] left stick  # if 1.0, the limit of left. if -1.0, the limit of right.
+axes[1] left stick  # if 1.0, the limit of up. if -1.0, the limit of down.
+axes[2] LT button   # if 1.0, not triggered. if -1.0, triggered.
+axes[3] right stick  # if 1.0, the limit of left. if -1.0, the limit of right.
+axes[4] right stick  # if 1.0, the limit of left. if -1.0, the limit of right.
+axes[5] RT button   # if 1.0, not triggered. if -1.0, triggered.
+axes[6] left/right arrow  # if 0.0, not triggered. if 1.0, left triggered. if -1.0, right triggered.
+axes[7] up/down arrow stick  # if 0.0, not triggered. if 1.0, up triggered. if -1.0, down triggered.
+
+button[0] A  # if 1, triggered. if 0, not triggered
+button[1] B
+button[2] X
+button[3] Y
+button[4] LB
+button[5] RB
+button[6] BACK
+button[7] START
+button[8] HOME
+button[9] unkown
+button[10] unkown

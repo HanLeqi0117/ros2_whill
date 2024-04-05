@@ -31,24 +31,24 @@ ROS2 package for WHILL Model CR
 
 ### Parameters
 
-### /serialport
-- The serial port of WHILL.
-- default_value: /dev/ttyUSB0
+- serialport
+    - The serial port of WHILL.
+    - default_value: /dev/ttyUSB0
     
-### /wheel_radius
-- default_value: 0.1325
+- wheel_radius
+    - default_value: 0.1325
 
-### /send_interval
-- the frequency of sending packet to WHILL
-- default_value: 10
+- send_interval
+    - the frequency of sending packet to WHILL
+    - default_value: 10
 
-### /enable_cmd_vel_control
-- If true, you can control WHILL by publishing the velocity command.But before that, you need update the firmware first.
-- default_value: false
+- enable_cmd_vel_control
+    - If true, you can control WHILL by publishing the velocity command.But before that, you need update the firmware first.
+    - default_value: false
 
-### /publish_tf
-- If true, TF will be published in this node.Otherwise, it will not be published.
-- default_value: false
+- publish_tf
+    - If true, TF will be published in this node.Otherwise, it will not be published.
+    - default_value: false
 
 ## Requirements
 - Ubuntu 22.04

@@ -1,54 +1,85 @@
-// C++ライブラリ
 #include <iostream>
 #include <chrono>
 #include <vector>
-
-// ROS2のライブラリ
 #include "rclcpp/rclcpp.hpp"
-
-// ROS2のメッセージインターフェイス
 #include "sensor_msgs/msg/joy.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "ros2_whill_interfaces/msg/whill_speed_profile.hpp"
 #include "ros2_whill_interfaces/srv/set_speed_profile.hpp"
 
-#define COLUMN_SIZE 9
+#define CONFIG_SIZE 9
 
 using namespace std::chrono_literals;
 
+/**
+ * @brief
+ * Mapping the keys of buttons and axes on xbox controller. The ruler of the key layout is according to "joy_node" which is a ROS Package.
+ */
+namespace JoyButtonKey
+{
+  /**
+   * @brief
+   * Key layout of Buttons
+   */  
+  namespace Buttons
+  {
+    const int A = 0;
+    const int B = 1;
+    const int X = 2;
+    const int Y = 3;
+    const int LB = 4;
+    const int RB = 5;
+    const int BACK = 6;
+    const int START = 7;
+    const int HOME = 8;
+    const int LEFT_STICK = 9;
+    const int RIGHT_STICK = 10;
+  }
+
+  /**
+   * @brief
+   * Key layout of Axes
+   */  namespace Axes
+  {
+    const int LEFT_STICK_L_R = 0;
+    const int LEFT_STICK_U_D = 1;
+    const int LT = 2;
+    const int RIGHT_STICK_L_R = 3;
+    const int RIGHT_STICK_U_D = 4;
+    const int RT = 5;
+    const int ARROW_L_R = 6;
+    const int ARROW_U_D = 7;
+  }
+
+};
+
+using namespace JoyButtonKey;
 class WhillJoy : public rclcpp::Node
 {
   public:
-    // コンストラクタを定義する
+    /**
+     * @brief
+     * A Constructor where to instantiate ROS API such as Parameter, Topic and Service and then initialize some parameters.
+     * 
+     * @param options NodeOptions Instance which has some optional setting about this node.
+     */
     WhillJoy(const rclcpp::NodeOptions &options) : Node("whill_joy2", options)
     {
-      RCLCPP_INFO(this->get_logger(), "whill_joy2 is OK! Pepared to receive the joy or velocity to control the robot");
-      // Parameterオブジェクトの関数を使用してROSパラメータを宣言する
-      // Joyスティックの配置
-      this->linear_ = this->declare_parameter("axis_liner", 1);
-      this->angular_ = this->declare_parameter("axis_angular", 0);
-      this->buttons_lb_ = this->declare_parameter("buttons_lb", 4);
-      this->buttons_rb_ = this->declare_parameter("buttons_rb", 5);
-      this->buttons_stop_ = this->declare_parameter("buttons_stop", 0);
-      this->buttons_rotation_R_ = this->declare_parameter("buttons_rotation_R", 5);
-      this->buttons_rotation_L_ = this->declare_parameter("buttons_rotation_L", 2);
-      this->buttons_straight_ = this->declare_parameter("buttons_straight", 2);
-
-      this->speed_config_ = this->declare_parameter("speed_config", 0);
+      this->speed_step_ = this->declare_parameter("speed_step", 0);
       this->use_joycon_ = this->declare_parameter("use_joycon", true);
       this->frequency_ = this->declare_parameter("frequency", 10);
       this->pressed_duration_ = this->declare_parameter("pressed_duration", 2.0);
 
       // Speed Profile Matrix
-      this->speed_profie_config_ = this->declare_parameter<std::vector<int64_t>>(
-        "speed_profie_config", std::vector<int64_t>{
-          10, 16, 48, 10, 16, 40, 8, 56, 72,
-          15, 16, 64, 10, 16, 56, 10, 56, 72,
-          30, 16, 82, 20, 16, 64, 15, 56, 72,
-          45, 16, 90, 20, 24, 64, 18, 56, 72,
-          57, 16, 90, 20, 24, 64, 14, 28, 64,
+      this->speed_config_vector_ = strToInt(this->declare_parameter<std::vector<std::string>>(
+        "speed_config_vector", std::vector<std::string>{
+          "10, 16, 48, 10, 16, 40, 8, 56, 72",
+          "15, 16, 64, 10, 16, 56, 10, 56, 72",
+          "30, 16, 82, 20, 16, 64, 15, 56, 72",
+          "45, 16, 90, 20, 24, 64, 18, 56, 72",
+          "57, 16, 90, 20, 24, 64, 14, 28, 64"
         }
-      );
+      ));
 
       // Initialize Time Instance
       joy_sub_time_ = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
@@ -60,11 +91,11 @@ class WhillJoy : public rclcpp::Node
       joy_.axes.resize(8);
       zero_twist_.axes.resize(8);
       speed_profiles_.resize(6);
-      joy_.axes[angular_] = 0;
-      joy_.axes[linear_] = 0;
-      zero_twist_.axes[angular_] = 0;
-      zero_twist_.axes[linear_] = 0;
-      speed_config_size_ = int(speed_profie_config_.size() / COLUMN_SIZE);
+      joy_.axes[Axes::LEFT_STICK_L_R] = 0;
+      joy_.axes[Axes::LEFT_STICK_U_D] = 0;
+      zero_twist_.axes[Axes::LEFT_STICK_L_R] = 0;
+      zero_twist_.axes[Axes::LEFT_STICK_U_D] = 0;
+      speed_config_size_ = speed_config_vector_.size();
 
       // Publisher
       this->joy_publisher_ = this->create_publisher<sensor_msgs::msg::Joy>("controller/joy", 100);
@@ -85,7 +116,7 @@ class WhillJoy : public rclcpp::Node
       if (this->set_speed_profile_client_->wait_for_service())
       {
         initial_speed_profiles_();
-        set_speed_mode_(speed_config_);
+        set_speed_(speed_step_);
         can_set_speed_ = true;
       }
     }
@@ -107,21 +138,13 @@ class WhillJoy : public rclcpp::Node
     rclcpp::Duration joy_sub_duration_ = rclcpp::Duration::from_seconds(0.0);
 
     // Parameters
-    long unsigned int linear_;
-    long unsigned int angular_;
-    long unsigned int buttons_lb_;
-    long unsigned int buttons_rb_;
-    long unsigned int buttons_stop_;
-    long unsigned int buttons_rotation_R_;
-    long unsigned int buttons_rotation_L_;
-    long unsigned int buttons_straight_;
     long unsigned int frequency_;
-    long unsigned int speed_config_;
+    size_t speed_step_;
     bool use_joycon_;
     double a_scale_;
     double l_scale_;
     double pressed_duration_;
-    int speed_config_size_;
+    size_t speed_config_size_;
 
     // Parameters
     bool zero_twist_published_;
@@ -131,7 +154,7 @@ class WhillJoy : public rclcpp::Node
     bool rb_triggered_ = false;
     sensor_msgs::msg::Joy joy_, zero_twist_;
     std::vector<ros2_whill_interfaces::msg::WhillSpeedProfile> speed_profiles_;
-    std::vector<int64_t> speed_profie_config_;
+    std::vector<std::vector<int8_t>> speed_config_vector_;
     int speed_profiles_count_ = 0;
 
     // Publisherを宣言する
@@ -152,8 +175,10 @@ class WhillJoy : public rclcpp::Node
     void main_process_();
     void ros_cmd_vel_callback_(geometry_msgs::msg::Twist::ConstSharedPtr cmd_vel);
     void ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state);
-    void set_speed_mode_(int now_config);
+    void set_speed_(size_t now_config);
     void initial_speed_profiles_();
+    std::vector<std::vector<int8_t>> strToInt(const std::vector<std::string> &string_vector);
+    bool check_speed_config(const std::vector<std::vector<int8_t>> &speed_config_vector);
     
 };
 
@@ -180,7 +205,7 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state
 
   if(joy_state->axes.size() < 8 || joy_state->buttons.size() < 11) return;
 
-  if (joy_state->buttons[buttons_lb_] == 1)
+  if (joy_state->buttons[Buttons::LB] == 1)
   {
     if (pressed_duration.seconds() > pressed_duration_)
     {
@@ -188,7 +213,7 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state
       lb_triggered_ = true;
     }
   }
-  if (joy_state->buttons[buttons_rb_] == 1)
+  if (joy_state->buttons[Buttons::RB] == 1)
   {
     if (pressed_duration.seconds() > pressed_duration_)
     {
@@ -197,36 +222,36 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state
     }
   }
 
-  if (joy_state->buttons[buttons_lb_] == 1 && joy_state->buttons[buttons_rb_] == 1)
+  if (joy_state->buttons[Buttons::LB] == 1 && joy_state->buttons[Buttons::RB] == 1)
   {  
     rb_triggered_ = false;
     lb_triggered_ = false;
   }
   
-  if(joy_state->axes[buttons_rotation_R_] >= 0 && joy_state->axes[buttons_rotation_L_] >= 0)
+  if(joy_state->axes[Axes::LT] >= 0 && joy_state->axes[Axes::RT] >= 0)
   {
-    if(joy_state->buttons[buttons_straight_] <= 0)
+    if(joy_state->buttons[Buttons::X] <= 0)
     {
-      joy_.axes[angular_] = joy_state->axes[angular_];
-      joy_.axes[linear_] = joy_state->axes[linear_];    
+      joy_.axes[Axes::LEFT_STICK_L_R] = joy_state->axes[Axes::LEFT_STICK_L_R];
+      joy_.axes[Axes::LEFT_STICK_U_D] = joy_state->axes[Axes::LEFT_STICK_U_D];    
     }
-    else if(joy_state->buttons[buttons_straight_] > 0)
+    else if(joy_state->buttons[Buttons::X] > 0)
     {
-      joy_.axes[angular_] = 0.0;
-      joy_.axes[linear_] = joy_state->axes[linear_];
+      joy_.axes[Axes::LEFT_STICK_L_R] = 0.0;
+      joy_.axes[Axes::LEFT_STICK_U_D] = joy_state->axes[Axes::LEFT_STICK_U_D];
     }
   }
-  else if(joy_state->axes[buttons_rotation_R_] < 0)
+  else if(joy_state->axes[Axes::RT] < 0)
   {
-    joy_.axes[angular_] = -1.0;
-    joy_.axes[linear_] = 0;
+    joy_.axes[Axes::LEFT_STICK_L_R] = -1.0;
+    joy_.axes[Axes::LEFT_STICK_U_D] = 0;
   }
-  else if(joy_state->axes[buttons_rotation_L_] < 0)
+  else if(joy_state->axes[Axes::LT] < 0)
   {
-    joy_.axes[angular_] = 1.0;
-    joy_.axes[linear_] = 0;
+    joy_.axes[Axes::LEFT_STICK_L_R] = 1.0;
+    joy_.axes[Axes::LEFT_STICK_U_D] = 0;
   }
-  stop_pressed_ = joy_state->buttons[buttons_stop_];
+  stop_pressed_ = joy_state->buttons[Buttons::A];
 }
 
 void WhillJoy::ros_cmd_vel_callback_(geometry_msgs::msg::Twist::ConstSharedPtr cmd_vel)
@@ -235,18 +260,18 @@ void WhillJoy::ros_cmd_vel_callback_(geometry_msgs::msg::Twist::ConstSharedPtr c
   if (lb_triggered_ || rb_triggered_) return;
 
   if(cmd_vel->angular.z < a_scale_ && cmd_vel->angular.z > -1.0 * a_scale_)
-    joy_.axes[angular_] = cmd_vel->angular.z / a_scale_;
+    joy_.axes[Axes::LEFT_STICK_L_R] = cmd_vel->angular.z / a_scale_;
   else if(cmd_vel->angular.z > a_scale_)
-    joy_.axes[angular_] = 1.0;
+    joy_.axes[Axes::LEFT_STICK_L_R] = 1.0;
   else
-    joy_.axes[angular_] = -1.0;
+    joy_.axes[Axes::LEFT_STICK_L_R] = -1.0;
   
   if(cmd_vel->linear.x < l_scale_ && cmd_vel->linear.x > -1.0 * l_scale_)
-    joy_.axes[linear_] = cmd_vel->linear.x / l_scale_;
+    joy_.axes[Axes::LEFT_STICK_U_D] = cmd_vel->linear.x / l_scale_;
   else if(cmd_vel->linear.x > l_scale_)
-    joy_.axes[linear_] = 1.0;
+    joy_.axes[Axes::LEFT_STICK_U_D] = 1.0;
   else
-    joy_.axes[linear_] = -1.0;
+    joy_.axes[Axes::LEFT_STICK_U_D] = -1.0;
 }
 
 void WhillJoy::main_process_()
@@ -277,15 +302,15 @@ void WhillJoy::main_process_()
       {
         if (lb_triggered_)
         {
-          speed_config_--;
-          set_speed_mode_(speed_config_);
+          speed_step_--;
+          set_speed_(speed_step_);
           RCLCPP_INFO(this->get_logger(), "Whill speed mode -1 !");
           lb_triggered_ = false;
         }
         if (rb_triggered_)
         {
-          speed_config_++;
-          set_speed_mode_(speed_config_);
+          speed_step_++;
+          set_speed_(speed_step_);
           RCLCPP_INFO(this->get_logger(), "Whill speed mode +1 !");
           rb_triggered_ = false;
         }
@@ -295,18 +320,18 @@ void WhillJoy::main_process_()
   }
 }
 
-void WhillJoy::set_speed_mode_(int now_config)
+void WhillJoy::set_speed_(size_t now_config)
 {
 
   if (now_config < 0)
   {
-    speed_config_ ++;
+    speed_step_ ++;
     RCLCPP_WARN(this->get_logger(), "The speed of Whill can not be slower!!!");
     return;
   }
   else if (now_config > speed_config_size_ - 1)
   {
-    speed_config_ --;
+    speed_step_ --;
     RCLCPP_WARN(this->get_logger(), "The speed of Whill can not be faster!!!");
     return;
   }
@@ -325,59 +350,90 @@ void WhillJoy::set_speed_mode_(int now_config)
   req->td1 = speed_profiles_[now_config].td1;
   auto req_future = this->set_speed_profile_client_->async_send_request(req);
   
-  RCLCPP_INFO(this->get_logger(), "Speed mode is changed to %d", now_config);
+  RCLCPP_INFO(this->get_logger(), "Speed mode is changed to %ld", now_config);
   
 }
 
 void WhillJoy::initial_speed_profiles_()
 {
-  if (speed_profie_config_.size() % COLUMN_SIZE != 0 || speed_config_size_ == 0)
+  if (check_speed_config(speed_config_vector_) || speed_config_size_ == 0)
   {
-    RCLCPP_WARN(this->get_logger(), "Wrong parameter setting, now set speed mode to default!!!");
-    speed_profie_config_ = std::vector<int64_t>{
-          10, 16, 48, 10, 16, 40, 8, 56, 72,
-          15, 16, 64, 10, 16, 56, 10, 56, 72,
-          30, 16, 82, 20, 16, 64, 15, 56, 72,
-          45, 16, 90, 20, 24, 64, 18, 56, 72,
-          57, 16, 90, 20, 24, 64, 14, 28, 64,
+    RCLCPP_WARN(this->get_logger(), "Bad speed configuration. Set it to default!");
+    speed_config_vector_ = std::vector<std::vector<int8_t>>{
+          {10, 16, 48, 10, 16, 40, 8, 56, 72},
+          {15, 16, 64, 10, 16, 56, 10, 56, 72},
+          {30, 16, 82, 20, 16, 64, 15, 56, 72},
+          {45, 16, 90, 20, 24, 64, 18, 56, 72},
+          {57, 16, 90, 20, 24, 64, 14, 28, 64},
     };
-    speed_config_size_ = int(speed_profie_config_.size() / COLUMN_SIZE);
+    speed_config_size_ = 5;
   }
 
-  if (speed_config_ >= 0 && int(speed_config_) < speed_config_size_)
-    RCLCPP_INFO(this->get_logger(), "Available Mode: %d", speed_config_size_);
+  if (speed_step_ >= 0 && speed_step_ < speed_config_size_)
+    RCLCPP_INFO(this->get_logger(), "Available Step: %ld", speed_config_size_);
   else
   {
-    speed_config_ = speed_config_size_ / 2;
-    RCLCPP_WARN(this->get_logger(), "nav_max_speed setting is bad, set to the middle position of the given config array or the default one!");
+    speed_step_ = speed_config_size_ / 2;
+    RCLCPP_WARN(this->get_logger(), "Bad Speed Step Configuration, and Set default one into the half of total steps.");
   }  
 
-  for (int i = 0; i < speed_config_size_; i++)
+  for (size_t i = 0; i < speed_config_size_; i++)
   {
-    for (int j = 0; j < COLUMN_SIZE; j++)
-    {
-      j % 9 == 0 ? speed_profiles_[i].fm1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].fm1;
-      j % 9 == 1 ? speed_profiles_[i].fa1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].fa1;
-      j % 9 == 2 ? speed_profiles_[i].fd1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].fd1;
-      j % 9 == 3 ? speed_profiles_[i].rm1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].rm1;
-      j % 9 == 4 ? speed_profiles_[i].ra1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].ra1;
-      j % 9 == 5 ? speed_profiles_[i].rd1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].rd1;
-      j % 9 == 6 ? speed_profiles_[i].tm1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].tm1;
-      j % 9 == 7 ? speed_profiles_[i].ta1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].ta1;
-      j % 9 == 8 ? speed_profiles_[i].td1 = speed_profie_config_[9 * i + j] : speed_profiles_[i].td1;
-      if (i == int(speed_config_))
+      speed_profiles_[i].fm1 = speed_config_vector_[i][0];
+      speed_profiles_[i].fa1 = speed_config_vector_[i][1];
+      speed_profiles_[i].fd1 = speed_config_vector_[i][2];
+      speed_profiles_[i].rm1 = speed_config_vector_[i][3];
+      speed_profiles_[i].ra1 = speed_config_vector_[i][4];
+      speed_profiles_[i].rd1 = speed_config_vector_[i][5];
+      speed_profiles_[i].tm1 = speed_config_vector_[i][6];
+      speed_profiles_[i].ta1 = speed_config_vector_[i][7];
+      speed_profiles_[i].td1 = speed_config_vector_[i][8];
+      
+      if (i == speed_step_)
       {
         // fm1とtm1は、0.1km/h単位のため、m/s単位とrad/sに変換する, 0.225は車軸の1/2である。
         l_scale_ = speed_profiles_[i].fm1 * 0.1 * 1000 / 3600;
         a_scale_ = speed_profiles_[i].tm1 * 0.1 * 1000 / 3600 / 0.225;
       }
-    }
+
   }
 
-  RCLCPP_INFO(this->get_logger(), "l_scale: %f, a_scale: %f", l_scale_, a_scale_);
+  RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f, Angular velocity Maximum: %f", l_scale_, a_scale_);
 
 }
 
+std::vector<std::vector<int8_t>> WhillJoy::strToInt(const std::vector<std::string> &string_vector)
+{
+  std::vector<std::vector<int8_t>> result;
+
+  for (auto &&string : string_vector)
+  {
+    std::vector<int8_t> vector;
+    std::istringstream iss(string);
+    std::string token;
+
+    while (std::getline(iss, token, ','))
+    {
+      try{
+          vector.push_back(std::stoi(token));
+      } catch(const std::exception& e) {
+          std::cerr << "Error converting string to int: " << e.what() << std::endl;
+      }
+    }
+    result.push_back(vector);
+  }
+
+  return result;
+}
+
+bool WhillJoy::check_speed_config(const std::vector<std::vector<int8_t>> &speed_config_vector)
+{
+  for (auto &&config : speed_config_vector)
+  {
+    if (config.size() != size_t(CONFIG_SIZE))return false;
+  }
+  return true;
+}
 
 int main(int argc, char *argv[])
 {

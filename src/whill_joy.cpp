@@ -277,15 +277,15 @@ void WhillJoy::set_speed_(size_t now_config)
 void WhillJoy::initial_speed_profiles_()
 {
   float l_scale, a_scale;
-  if (check_speed_config(speed_config_vector_) || speed_config_size_ == 0)
+  if (!check_speed_config(speed_config_vector_) || speed_config_size_ == 0)
   {
     RCLCPP_WARN(this->get_logger(), "Bad speed configuration. Set it to default!");
     speed_config_vector_ = std::vector<std::vector<int8_t>>{
-          {10, 16, 48, 10, 16, 40, 8, 56, 72},
-          {15, 16, 64, 10, 16, 56, 10, 56, 72},
-          {30, 16, 82, 20, 16, 64, 15, 56, 72},
-          {45, 16, 90, 20, 24, 64, 18, 56, 72},
-          {57, 16, 90, 20, 24, 64, 14, 28, 64},
+      {10, 16, 48, 10, 16, 40, 8, 56, 72},
+      {15, 16, 64, 10, 16, 56, 10, 56, 72},
+      {30, 16, 82, 20, 16, 64, 15, 56, 72},
+      {45, 16, 90, 20, 24, 64, 18, 56, 72},
+      {57, 16, 90, 20, 24, 64, 14, 28, 64},
     };
     speed_config_size_ = 5;
   }
@@ -351,6 +351,10 @@ bool WhillJoy::check_speed_config(const std::vector<std::vector<int8_t>> &speed_
   for (auto &&config : speed_config_vector)
   {
     if (config.size() != size_t(CONFIG_SIZE))return false;
+
+    // debug
+    // printf("%d, %d, %d, %d, %d, %d, %d, %d, %d\n", 
+    // config[0], config[1], config[2], config[3], config[4], config[5] ,config[6], config[7], config[8]);
   }
   return true;
 }

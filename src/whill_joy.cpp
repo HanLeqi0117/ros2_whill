@@ -83,7 +83,6 @@ class WhillJoy : public rclcpp::Node
 
       // Initialize Time Instance
       joy_sub_time_ = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
-      cmd_sub_time_ = rclcpp::Time(0, 0, RCL_SYSTEM_TIME); 
       pressed_time_ = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
       
       zero_twist_published_ = false;
@@ -96,19 +95,15 @@ class WhillJoy : public rclcpp::Node
       zero_twist_.axes[Axes::LEFT_STICK_L_R] = 0;
       zero_twist_.axes[Axes::LEFT_STICK_U_D] = 0;
       speed_config_size_ = speed_config_vector_.size();
-
-      // Publisher
-      this->joy_publisher_ = this->create_publisher<sensor_msgs::msg::Joy>("controller/joy", 100);
       
       // Subscriber
-      this->joy_state_subscriber_ = create_subscription<sensor_msgs::msg::Joy>("joy_state", 10, std::bind(&WhillJoy::ros_joy_callback_, this, std::placeholders::_1));
-      this->cmd_vel_subscriber_ = this->create_subscription<geometry_msgs::msg::Twist>("controller/cmd_vel", 10, std::bind(&WhillJoy::ros_cmd_vel_callback_, this, std::placeholders::_1));
+      this->joy_sub_ = create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&WhillJoy::ros_joy_callback_, this, std::placeholders::_1));
 
       // Client
       this->set_speed_profile_client_ = this->create_client<ros2_whill_interfaces::srv::SetSpeedProfile>("set_speed_profile_srv", rclcpp::QoS(5));
 
       // WallTimer
-      joy_pub_timer_ = this->create_wall_timer(
+      main_timer_ = this->create_wall_timer(
         1.0s / this->frequency_,
         std::bind(&WhillJoy::main_process_, this)
       ); 
@@ -127,12 +122,12 @@ class WhillJoy : public rclcpp::Node
     //
 
     // Time
-    rclcpp::Time joy_sub_time_, cmd_sub_time_;
+    rclcpp::Time joy_sub_time_;
     rclcpp::Time pressed_time_;
-    
-    // Timer
-    rclcpp::TimerBase::SharedPtr joy_pub_timer_;
 
+    // Wall Timer
+    rclcpp::TimerBase::SharedPtr main_timer_;
+    
     // Duraton
     // rclcpp::Duration joy_sub_duration_;
     rclcpp::Duration joy_sub_duration_ = rclcpp::Duration::from_seconds(0.0);
@@ -141,8 +136,6 @@ class WhillJoy : public rclcpp::Node
     long unsigned int frequency_;
     size_t speed_step_;
     bool use_joycon_;
-    double a_scale_;
-    double l_scale_;
     double pressed_duration_;
     size_t speed_config_size_;
 
@@ -157,12 +150,8 @@ class WhillJoy : public rclcpp::Node
     std::vector<std::vector<int8_t>> speed_config_vector_;
     int speed_profiles_count_ = 0;
 
-    // Publisherを宣言する
-    rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_publisher_;
-
-    // Subscriberのを宣言する
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_subscriber_;
-    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_state_subscriber_;
+    // Subscriber
+    rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
 
     // Client
     rclcpp::Client<ros2_whill_interfaces::srv::SetSpeedProfile>::SharedPtr set_speed_profile_client_;
@@ -173,8 +162,7 @@ class WhillJoy : public rclcpp::Node
     // double toSec(const rclcpp::Time & time);
 
     void main_process_();
-    void ros_cmd_vel_callback_(geometry_msgs::msg::Twist::ConstSharedPtr cmd_vel);
-    void ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state);
+    void ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy);
     void set_speed_(size_t now_config);
     void initial_speed_profiles_();
     std::vector<std::vector<int8_t>> strToInt(const std::vector<std::string> &string_vector);
@@ -197,15 +185,14 @@ class WhillJoy : public rclcpp::Node
 //   return WhillJoy::nanosecToSec(time.nanoseconds());
 // }
 
-void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state)
+void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
 {
-
   joy_sub_time_ = this->now();
   rclcpp::Duration pressed_duration(this->now() - pressed_time_);
 
-  if(joy_state->axes.size() < 8 || joy_state->buttons.size() < 11) return;
+  if(joy->axes.size() < 8 || joy->buttons.size() < 11) return;
 
-  if (joy_state->buttons[Buttons::LB] == 1)
+  if (joy->buttons[Buttons::LB] == 1)
   {
     if (pressed_duration.seconds() > pressed_duration_)
     {
@@ -213,7 +200,7 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state
       lb_triggered_ = true;
     }
   }
-  if (joy_state->buttons[Buttons::RB] == 1)
+  if (joy->buttons[Buttons::RB] == 1)
   {
     if (pressed_duration.seconds() > pressed_duration_)
     {
@@ -222,107 +209,40 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy_state
     }
   }
 
-  if (joy_state->buttons[Buttons::LB] == 1 && joy_state->buttons[Buttons::RB] == 1)
+  if (joy->buttons[Buttons::LB] == 1 && joy->buttons[Buttons::RB] == 1)
   {  
     rb_triggered_ = false;
     lb_triggered_ = false;
   }
-  
-  if(joy_state->axes[Axes::LT] >= 0 && joy_state->axes[Axes::RT] >= 0)
-  {
-    if(joy_state->buttons[Buttons::X] <= 0)
-    {
-      joy_.axes[Axes::LEFT_STICK_L_R] = joy_state->axes[Axes::LEFT_STICK_L_R];
-      joy_.axes[Axes::LEFT_STICK_U_D] = joy_state->axes[Axes::LEFT_STICK_U_D];    
-    }
-    else if(joy_state->buttons[Buttons::X] > 0)
-    {
-      joy_.axes[Axes::LEFT_STICK_L_R] = 0.0;
-      joy_.axes[Axes::LEFT_STICK_U_D] = joy_state->axes[Axes::LEFT_STICK_U_D];
-    }
-  }
-  else if(joy_state->axes[Axes::RT] < 0)
-  {
-    joy_.axes[Axes::LEFT_STICK_L_R] = -1.0;
-    joy_.axes[Axes::LEFT_STICK_U_D] = 0;
-  }
-  else if(joy_state->axes[Axes::LT] < 0)
-  {
-    joy_.axes[Axes::LEFT_STICK_L_R] = 1.0;
-    joy_.axes[Axes::LEFT_STICK_U_D] = 0;
-  }
-  stop_pressed_ = joy_state->buttons[Buttons::A];
-}
-
-void WhillJoy::ros_cmd_vel_callback_(geometry_msgs::msg::Twist::ConstSharedPtr cmd_vel)
-{
-  cmd_sub_time_ = this->now();
-  if (lb_triggered_ || rb_triggered_) return;
-
-  if(cmd_vel->angular.z < a_scale_ && cmd_vel->angular.z > -1.0 * a_scale_)
-    joy_.axes[Axes::LEFT_STICK_L_R] = cmd_vel->angular.z / a_scale_;
-  else if(cmd_vel->angular.z > a_scale_)
-    joy_.axes[Axes::LEFT_STICK_L_R] = 1.0;
-  else
-    joy_.axes[Axes::LEFT_STICK_L_R] = -1.0;
-  
-  if(cmd_vel->linear.x < l_scale_ && cmd_vel->linear.x > -1.0 * l_scale_)
-    joy_.axes[Axes::LEFT_STICK_U_D] = cmd_vel->linear.x / l_scale_;
-  else if(cmd_vel->linear.x > l_scale_)
-    joy_.axes[Axes::LEFT_STICK_U_D] = 1.0;
-  else
-    joy_.axes[Axes::LEFT_STICK_U_D] = -1.0;
 }
 
 void WhillJoy::main_process_()
 {
-  if(!use_joycon_)
-  {
-    joy_sub_duration_ = this->now() - cmd_sub_time_;
-    // RCLCPP_INFO(this->get_logger(), "Prepared to send Joy!!! Time is %.2fs = %ldns - %ldns", joy_sub_duration_.seconds(), this->now().nanoseconds(), cmd_sub_time_.nanoseconds());
-    if (joy_sub_duration_.seconds() < 0.2) this->joy_publisher_->publish(joy_);
-  }
-  else{
-    joy_sub_duration_ = this->now() - joy_sub_time_;
-    if (!stop_pressed_ && joy_sub_duration_.seconds() < 0.2)
-    {
-      // 速度指令をそのままpublishする
-      this->joy_publisher_->publish(joy_);
-      zero_twist_published_ = false;
-    }
-    else{
-      this->joy_publisher_->publish(zero_twist_);
-      zero_twist_published_ = true;
-      // std::cout << "vel zero" << std::endl;
-    }
 
-    if (can_set_speed_)
+  if (can_set_speed_)
+  {
+    if (this->set_speed_profile_client_->service_is_ready())
     {
-      if (this->set_speed_profile_client_->service_is_ready())
+      if (lb_triggered_)
       {
-        if (lb_triggered_)
-        {
-          speed_step_--;
-          set_speed_(speed_step_);
-          RCLCPP_INFO(this->get_logger(), "Whill speed mode -1 !");
-          lb_triggered_ = false;
-        }
-        if (rb_triggered_)
-        {
-          speed_step_++;
-          set_speed_(speed_step_);
-          RCLCPP_INFO(this->get_logger(), "Whill speed mode +1 !");
-          rb_triggered_ = false;
-        }
+        speed_step_--;
+        set_speed_(speed_step_);
+        RCLCPP_INFO(this->get_logger(), "Whill speed mode -1 !");
+        lb_triggered_ = false;
+      }
+      if (rb_triggered_)
+      {
+        speed_step_++;
+        set_speed_(speed_step_);
+        RCLCPP_INFO(this->get_logger(), "Whill speed mode +1 !");
+        rb_triggered_ = false;
       }
     }
-
   }
 }
 
 void WhillJoy::set_speed_(size_t now_config)
 {
-
   if (now_config < 0)
   {
     speed_step_ ++;
@@ -356,6 +276,7 @@ void WhillJoy::set_speed_(size_t now_config)
 
 void WhillJoy::initial_speed_profiles_()
 {
+  float l_scale, a_scale;
   if (check_speed_config(speed_config_vector_) || speed_config_size_ == 0)
   {
     RCLCPP_WARN(this->get_logger(), "Bad speed configuration. Set it to default!");
@@ -392,14 +313,13 @@ void WhillJoy::initial_speed_profiles_()
       if (i == speed_step_)
       {
         // fm1とtm1は、0.1km/h単位のため、m/s単位とrad/sに変換する, 0.225は車軸の1/2である。
-        l_scale_ = speed_profiles_[i].fm1 * 0.1 * 1000 / 3600;
-        a_scale_ = speed_profiles_[i].tm1 * 0.1 * 1000 / 3600 / 0.225;
+        l_scale = speed_profiles_[i].fm1 * 0.1f * 1000 / 3600;
+        a_scale = speed_profiles_[i].tm1 * 0.1f * 1000 / 3600 / 0.225;
       }
 
   }
 
-  RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f, Angular velocity Maximum: %f", l_scale_, a_scale_);
-
+  RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f, Angular velocity Maximum: %f", l_scale, a_scale);
 }
 
 std::vector<std::vector<int8_t>> WhillJoy::strToInt(const std::vector<std::string> &string_vector)

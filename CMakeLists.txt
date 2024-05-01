@@ -17,7 +17,7 @@ rclcpp_components_register_nodes(${PROJECT_NAME}_component "WhillController")
 target_compile_options(${PROJECT_NAME}_component PUBLIC -Wall)
 
 ament_auto_add_executable(${PROJECT_NAME} src/main.cpp src/whill_modelc/com_whill.cpp src/whill_modelc/uart.cpp src/odom.cpp)
-ament_auto_add_executable(whill_joy2 src/whill_joy2)
+ament_auto_add_executable(whill_joy src/whill_joy)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

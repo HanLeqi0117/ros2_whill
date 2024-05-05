@@ -99,7 +99,7 @@ class WhillJoy : public rclcpp::Node
       if (this->set_speed_profile_client_->wait_for_service())
       {
         initial_speed_profiles_();
-        set_speed_(speed_step_);
+        set_speed_();
       }
     }
 
@@ -116,7 +116,7 @@ class WhillJoy : public rclcpp::Node
 
     // Parameters
     bool power_on_ = false;
-    std::vector<ros2_whill_interfaces::msg::WhillSpeedProfile> speed_profiles_;
+    std::vector<ros2_whill_interfaces::srv::SetSpeedProfile::Request::SharedPtr> speed_profiles_;
     std::vector<std::vector<int8_t>> speed_config_vector_;
 
     // Subscriber
@@ -131,7 +131,7 @@ class WhillJoy : public rclcpp::Node
     // double toSec(const rclcpp::Time & time);
 
     void ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy);
-    void set_speed_(size_t now_config);
+    void set_speed_();
     void set_power_();
     void initial_speed_profiles_();
     std::vector<std::vector<int8_t>> strToInt(const std::vector<std::string> &string_vector);
@@ -148,14 +148,14 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
   {
     if (joy->buttons[Buttons::LB] == 1)
     {
-      speed_step_--;
-      set_speed_(speed_step_);
+      speed_step_ --;
+      set_speed_();
       RCLCPP_INFO(this->get_logger(), "Whill speed mode -1 !");
     }
     if (joy->buttons[Buttons::RB] == 1)
     {
-      speed_step_++;
-      set_speed_(speed_step_);
+      speed_step_ ++;
+      set_speed_();
       RCLCPP_INFO(this->get_logger(), "Whill speed mode +1 !");
     }
   }
@@ -168,34 +168,22 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
 
 }
 
-void WhillJoy::set_speed_(size_t now_config)
+void WhillJoy::set_speed_()
 {
-  if (now_config <= 0)
+  if (speed_step_ <= 0)
   {
     speed_step_ = 0;
     RCLCPP_WARN(this->get_logger(), "The speed of Whill can not be slower!!!");
   }
-  else if (now_config > speed_config_size_ - 1)
+  else if (speed_step_ >= speed_config_size_ - 1)
   {
-    speed_step_ --;
+    speed_step_ = speed_config_size_ - 1;
     RCLCPP_WARN(this->get_logger(), "The speed of Whill can not be faster!!!");
   }
-
-  auto req = std::make_shared<ros2_whill_interfaces::srv::SetSpeedProfile::Request>();
   
-  req->s1 = 4;
-  req->fm1 = speed_profiles_[now_config].fm1;
-  req->fa1 = speed_profiles_[now_config].fa1;
-  req->fd1 = speed_profiles_[now_config].fd1;
-  req->rm1 = speed_profiles_[now_config].rm1;
-  req->ra1 = speed_profiles_[now_config].ra1;
-  req->rd1 = speed_profiles_[now_config].rd1;
-  req->tm1 = speed_profiles_[now_config].tm1;
-  req->ta1 = speed_profiles_[now_config].ta1;
-  req->td1 = speed_profiles_[now_config].td1;
-  auto req_future = this->set_speed_profile_client_->async_send_request(req);
+  auto req_future = this->set_speed_profile_client_->async_send_request(speed_profiles_[speed_step_]);
   
-  RCLCPP_INFO(this->get_logger(), "Speed mode is changed to %ld", now_config);
+  RCLCPP_INFO(this->get_logger(), "Speed mode is changed to %ld", speed_step_);
 
   rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
 }
@@ -229,21 +217,24 @@ void WhillJoy::initial_speed_profiles_()
 
   for (size_t i = 0; i < speed_config_size_; i++)
   {
-      speed_profiles_[i].fm1 = speed_config_vector_[i][0];
-      speed_profiles_[i].fa1 = speed_config_vector_[i][1];
-      speed_profiles_[i].fd1 = speed_config_vector_[i][2];
-      speed_profiles_[i].rm1 = speed_config_vector_[i][3];
-      speed_profiles_[i].ra1 = speed_config_vector_[i][4];
-      speed_profiles_[i].rd1 = speed_config_vector_[i][5];
-      speed_profiles_[i].tm1 = speed_config_vector_[i][6];
-      speed_profiles_[i].ta1 = speed_config_vector_[i][7];
-      speed_profiles_[i].td1 = speed_config_vector_[i][8];
+      speed_profiles_[i] = std::make_shared<ros2_whill_interfaces::srv::SetSpeedProfile::Request>();
+
+      speed_profiles_[i]->fm1 = speed_config_vector_[i][0];
+      speed_profiles_[i]->fa1 = speed_config_vector_[i][1];
+      speed_profiles_[i]->fd1 = speed_config_vector_[i][2];
+      speed_profiles_[i]->rm1 = speed_config_vector_[i][3];
+      speed_profiles_[i]->ra1 = speed_config_vector_[i][4];
+      speed_profiles_[i]->rd1 = speed_config_vector_[i][5];
+      speed_profiles_[i]->tm1 = speed_config_vector_[i][6];
+      speed_profiles_[i]->ta1 = speed_config_vector_[i][7];
+      speed_profiles_[i]->td1 = speed_config_vector_[i][8];
+      speed_profiles_[i]->s1 = 4;
       
       if (i == speed_step_)
       {
         // fm1とtm1は、0.1km/h単位のため、m/s単位とrad/sに変換する, 0.225は車軸の1/2である。
-        l_scale = speed_profiles_[i].fm1 * 0.1f * 1000 / 3600;
-        a_scale = speed_profiles_[i].tm1 * 0.1f * 1000 / 3600 / 0.225;
+        l_scale = speed_profiles_[i]->fm1 * 0.1f * 1000 / 3600;
+        a_scale = speed_profiles_[i]->tm1 * 0.1f * 1000 / 3600 / 0.225;
       }
 
   }

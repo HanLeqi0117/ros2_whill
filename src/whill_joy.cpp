@@ -243,9 +243,9 @@ void WhillJoy::main_process_()
 
 void WhillJoy::set_speed_(size_t now_config)
 {
-  if (now_config < 0)
+  if (now_config <= 0)
   {
-    speed_step_ ++;
+    speed_step_ = 0;
     RCLCPP_WARN(this->get_logger(), "The speed of Whill can not be slower!!!");
     return;
   }

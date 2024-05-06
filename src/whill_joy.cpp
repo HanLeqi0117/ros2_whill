@@ -5,7 +5,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "geometry_msgs/msg/twist.hpp"
-#include "ros2_whill_interfaces/msg/whill_speed_profile.hpp"
 #include "ros2_whill_interfaces/srv/set_speed_profile.hpp"
 #include "ros2_whill_interfaces/srv/set_power.hpp"
 
@@ -125,10 +124,6 @@ class WhillJoy : public rclcpp::Node
     // Client
     rclcpp::Client<ros2_whill_interfaces::srv::SetSpeedProfile>::SharedPtr set_speed_profile_client_;
     rclcpp::Client<ros2_whill_interfaces::srv::SetPower>::SharedPtr set_power_client_;
-    //convert time
-    // double nanosecToSec(const rcl_time_point_value_t nanoseconds);
-    // double toSec(const rclcpp::Duration & duration);
-    // double toSec(const rclcpp::Time & time);
 
     void ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy);
     void set_speed_();

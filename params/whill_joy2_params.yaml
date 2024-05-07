@@ -10,13 +10,6 @@ whill_joy2:
     # Speed limit: 8 ~ 60
     # Acceleration limit: 10 ~ 90
     # Deceleration limit: 10 ~ 160
-    speed_config_vector: [
-      "10, 16, 48, 10, 16, 40, 8, 56, 72",
-      "15, 16, 64, 10, 16, 56, 10, 56, 72",
-      "30, 16, 82, 20, 16, 64, 15, 56, 72",
-      "45, 16, 90, 20, 24, 64, 18, 56, 72",
-      "57, 16, 90, 20, 24, 64, 14, 28, 64",
-      "15, 16, 64, 10, 16, 56, 10, 56, 72"
+    speed_profile_initial: [
+      45, 16, 90, 20, 24, 64, 18, 56, 72
     ]
-    # default speed step
-    speed_step: 3

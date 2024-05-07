@@ -86,11 +86,11 @@ class WhillJoy : public rclcpp::Node
       this->set_speed_profile_client_ = this->create_client<ros2_whill_interfaces::srv::SetSpeedProfile>("set_speed_profile_srv", rclcpp::QoS(5));
       this->set_power_client_ = this->create_client<ros2_whill_interfaces::srv::SetPower>("set_power_srv", rclcpp::QoS(5));
 
-      if (this->set_speed_profile_client_->wait_for_service())
-      {
-        initial_speed_profiles_();
-        set_speed_();
-      }
+      this->set_speed_profile_client_->wait_for_service();
+      this->set_power_client_->wait_for_service();
+
+      initial_speed_profiles_();
+      set_speed_();
     }
 
   private:
@@ -141,7 +141,7 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
   }
 
   // If button HOME is pressed
-  if (joy->buttons[Buttons::HOME] == 1 && set_power_client_->service_is_ready())
+  if (joy->buttons[Buttons::HOME] == 1)
   {
     set_power_();
   }
@@ -161,6 +161,8 @@ void WhillJoy::set_speed_()
     speed_profile_->rm1 -= 5;
     speed_profile_->tm1 -= 5;
     RCLCPP_WARN(get_logger(), "One of the Speed among forward, reverse, turn is in maximum. Speed will be not set!!!");
+    rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
+
     return;
   }
 
@@ -174,21 +176,21 @@ void WhillJoy::set_speed_()
     speed_profile_->rm1 += 5;
     speed_profile_->tm1 += 5;
     RCLCPP_WARN(get_logger(), "One of the Speed among forward, reverse, turn is in minimum. Speed will be not set!!!");
+    rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
+
     return;
   }
 
   auto req_future = this->set_speed_profile_client_->async_send_request(speed_profile_);
 
-  if (rclcpp::spin_until_future_complete(this->shared_from_this(), req_future) == rclcpp::FutureReturnCode::SUCCESS)
-  {
-    float l_scale, a_scale;
+  float l_scale, a_scale;
 
-    l_scale = speed_profile_->fm1 * 0.1f * 1000 / 3600;
-    a_scale = speed_profile_->tm1 * 0.1f * 1000 / 3600 / 0.225;
+  l_scale = speed_profile_->fm1 * 0.1f * 1000 / 3600;
+  a_scale = speed_profile_->tm1 * 0.1f * 1000 / 3600 / 0.225;
 
-    RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f m/s, Angular velocity Maximum: %f rad/s", l_scale, a_scale);
-    rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
-  }
+  RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f m/s, Angular velocity Maximum: %f rad/s", l_scale, a_scale);
+  
+  rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
 }
 
 void WhillJoy::initial_speed_profiles_()

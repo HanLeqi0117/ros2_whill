@@ -71,22 +71,13 @@ class WhillJoy : public rclcpp::Node
      */
     WhillJoy(const rclcpp::NodeOptions &options) : Node("whill_joy", options)
     {
-      this->speed_step_ = this->declare_parameter("speed_step", 0);
       this->frequency_ = this->declare_parameter("frequency", 10);
       this->pressed_duration_ = this->declare_parameter("pressed_duration", 2.0);
-
-      // Speed Profile Matrix
-      this->speed_config_vector_ = strToInt(this->declare_parameter<std::vector<std::string>>(
-        "speed_config_vector", std::vector<std::string>{
-          "10, 16, 48, 10, 16, 40, 8, 56, 72",
-          "15, 16, 64, 10, 16, 56, 10, 56, 72",
-          "30, 16, 82, 20, 16, 64, 15, 56, 72",
-          "45, 16, 90, 20, 24, 64, 18, 56, 72",
-          "57, 16, 90, 20, 24, 64, 14, 28, 64"
-        }
-      ));
-      
-      speed_config_size_ = speed_config_vector_.size();
+      // Initial speed profile
+      this->speed_profile_initial_ = this->declare_parameter<std::vector<int64_t>>(
+        "speed_profile_initial",
+        std::vector<int64_t>{30, 16, 82, 20, 16, 64, 15, 56, 72}
+      );
       
       // Subscriber
       this->joy_sub_ = create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&WhillJoy::ros_joy_callback_, this, std::placeholders::_1));
@@ -109,14 +100,12 @@ class WhillJoy : public rclcpp::Node
     
     // Parameters
     long unsigned int frequency_;
-    size_t speed_step_;
     double pressed_duration_;
-    size_t speed_config_size_;
 
     // Parameters
     bool power_on_ = false;
-    std::vector<ros2_whill_interfaces::srv::SetSpeedProfile::Request::SharedPtr> speed_profiles_;
-    std::vector<std::vector<int8_t>> speed_config_vector_;
+    ros2_whill_interfaces::srv::SetSpeedProfile::Request::SharedPtr speed_profile_;
+    std::vector<int64_t> speed_profile_initial_;
 
     // Subscriber
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
@@ -128,31 +117,27 @@ class WhillJoy : public rclcpp::Node
     void ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy);
     void set_speed_();
     void set_power_();
-    void initial_speed_profiles_();
-    std::vector<std::vector<int8_t>> strToInt(const std::vector<std::string> &string_vector);
-    bool check_speed_config(const std::vector<std::vector<int8_t>> &speed_config_vector);
-    
+    void initial_speed_profiles_();    
 };
 
 void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
 {
   if(joy->axes.size() < 8 || joy->buttons.size() < 11) return;
 
-  // If button LB or RB is pressed
-  if (joy->buttons[Buttons::LB] != joy->buttons[Buttons::RB])
+  // If Axis Up/Down is pressed
+  if (joy->axes[Axes::ARROW_U_D] > 0.0)
   {
-    if (joy->buttons[Buttons::LB] == 1)
-    {
-      speed_step_ --;
-      set_speed_();
-      RCLCPP_INFO(this->get_logger(), "Whill speed mode -1 !");
-    }
-    if (joy->buttons[Buttons::RB] == 1)
-    {
-      speed_step_ ++;
-      set_speed_();
-      RCLCPP_INFO(this->get_logger(), "Whill speed mode +1 !");
-    }
+    speed_profile_->fm1 += 5; 
+    speed_profile_->rm1 += 5;
+    speed_profile_->tm1 += 5;
+    set_speed_();
+  }
+  else if (joy->axes[Axes::ARROW_U_D] < 0.0)
+  {
+    speed_profile_->fm1 -= 5; 
+    speed_profile_->rm1 -= 5;
+    speed_profile_->tm1 -= 5;
+    set_speed_();
   }
 
   // If button HOME is pressed
@@ -165,76 +150,68 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
 
 void WhillJoy::set_speed_()
 {
-  if (speed_step_ <= 0)
-  {
-    speed_step_ = 0;
-    RCLCPP_WARN(this->get_logger(), "The speed of Whill can not be slower!!!");
-  }
-  else if (speed_step_ >= speed_config_size_ - 1)
-  {
-    speed_step_ = speed_config_size_ - 1;
-    RCLCPP_WARN(this->get_logger(), "The speed of Whill can not be faster!!!");
-  }
-  
-  auto req_future = this->set_speed_profile_client_->async_send_request(speed_profiles_[speed_step_]);
-  
-  RCLCPP_INFO(this->get_logger(), "Speed mode is changed to %ld", speed_step_);
 
-  rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
+  if (
+    speed_profile_->fm1 >= 60 ||
+    speed_profile_->rm1 >= 60 ||
+    speed_profile_->tm1 >= 60
+  )
+  {
+    speed_profile_->fm1 -= 5; 
+    speed_profile_->rm1 -= 5;
+    speed_profile_->tm1 -= 5;
+    RCLCPP_WARN(get_logger(), "One of the Speed among forward, reverse, turn is in maximum. Speed will be not set!!!");
+    return;
+  }
+
+  if (
+    speed_profile_->fm1 <= 8 ||
+    speed_profile_->rm1 <= 8 ||
+    speed_profile_->tm1 <= 8
+  )
+  {
+    speed_profile_->fm1 += 5; 
+    speed_profile_->rm1 += 5;
+    speed_profile_->tm1 += 5;
+    RCLCPP_WARN(get_logger(), "One of the Speed among forward, reverse, turn is in minimum. Speed will be not set!!!");
+    return;
+  }
+
+  auto req_future = this->set_speed_profile_client_->async_send_request(speed_profile_);
+
+  if (rclcpp::spin_until_future_complete(this->shared_from_this(), req_future) == rclcpp::FutureReturnCode::SUCCESS)
+  {
+    float l_scale, a_scale;
+
+    l_scale = speed_profile_->fm1 * 0.1f * 1000 / 3600;
+    a_scale = speed_profile_->tm1 * 0.1f * 1000 / 3600 / 0.225;
+
+    RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f m/s, Angular velocity Maximum: %f rad/s", l_scale, a_scale);
+    rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
+  }
 }
 
 void WhillJoy::initial_speed_profiles_()
 {
+  speed_profile_ = std::make_shared<ros2_whill_interfaces::srv::SetSpeedProfile::Request>();
+
+  speed_profile_->fm1 = speed_profile_initial_[0];
+  speed_profile_->fa1 = speed_profile_initial_[1];
+  speed_profile_->fd1 = speed_profile_initial_[2];
+  speed_profile_->rm1 = speed_profile_initial_[3];
+  speed_profile_->ra1 = speed_profile_initial_[4];
+  speed_profile_->rd1 = speed_profile_initial_[5];
+  speed_profile_->tm1 = speed_profile_initial_[6];
+  speed_profile_->ta1 = speed_profile_initial_[7];
+  speed_profile_->td1 = speed_profile_initial_[8];
+  speed_profile_->s1 = 4;
+
   float l_scale, a_scale;
-  if (!check_speed_config(speed_config_vector_) || speed_config_size_ == 0)
-  {
-    RCLCPP_WARN(this->get_logger(), "Bad speed configuration. Set it to default!");
-    speed_config_vector_ = std::vector<std::vector<int8_t>>{
-      {10, 16, 48, 10, 16, 40, 8, 56, 72},
-      {15, 16, 64, 10, 16, 56, 10, 56, 72},
-      {30, 16, 82, 20, 16, 64, 15, 56, 72},
-      {45, 16, 90, 20, 24, 64, 18, 56, 72},
-      {57, 16, 90, 20, 24, 64, 14, 28, 64},
-    };
-    speed_config_size_ = 5;
-  }
 
-  if (speed_step_ >= 0 && speed_step_ < speed_config_size_)
-  {
-    speed_profiles_.resize(speed_config_size_);
-    RCLCPP_INFO(this->get_logger(), "Available Step: %ld", speed_config_size_);
-  }
-  else
-  {
-    speed_step_ = speed_config_size_ / 2;
-    RCLCPP_WARN(this->get_logger(), "Bad Speed Step Configuration, and Set default one into the half of total steps.");
-  }  
+  l_scale = speed_profile_->fm1 * 0.1f * 1000 / 3600;
+  a_scale = speed_profile_->tm1 * 0.1f * 1000 / 3600 / 0.225;
 
-  for (size_t i = 0; i < speed_config_size_; i++)
-  {
-      speed_profiles_[i] = std::make_shared<ros2_whill_interfaces::srv::SetSpeedProfile::Request>();
-
-      speed_profiles_[i]->fm1 = speed_config_vector_[i][0];
-      speed_profiles_[i]->fa1 = speed_config_vector_[i][1];
-      speed_profiles_[i]->fd1 = speed_config_vector_[i][2];
-      speed_profiles_[i]->rm1 = speed_config_vector_[i][3];
-      speed_profiles_[i]->ra1 = speed_config_vector_[i][4];
-      speed_profiles_[i]->rd1 = speed_config_vector_[i][5];
-      speed_profiles_[i]->tm1 = speed_config_vector_[i][6];
-      speed_profiles_[i]->ta1 = speed_config_vector_[i][7];
-      speed_profiles_[i]->td1 = speed_config_vector_[i][8];
-      speed_profiles_[i]->s1 = 4;
-      
-      if (i == speed_step_)
-      {
-        // fm1とtm1は、0.1km/h単位のため、m/s単位とrad/sに変換する, 0.225は車軸の1/2である。
-        l_scale = speed_profiles_[i]->fm1 * 0.1f * 1000 / 3600;
-        a_scale = speed_profiles_[i]->tm1 * 0.1f * 1000 / 3600 / 0.225;
-      }
-
-  }
-
-  RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f, Angular velocity Maximum: %f", l_scale, a_scale);
+  RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f m/s, Angular velocity Maximum: %f rad/s", l_scale, a_scale);
 }
 
 void WhillJoy::set_power_()
@@ -257,43 +234,6 @@ void WhillJoy::set_power_()
   }
 
   rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
-}
-
-std::vector<std::vector<int8_t>> WhillJoy::strToInt(const std::vector<std::string> &string_vector)
-{
-  std::vector<std::vector<int8_t>> result;
-
-  for (auto &&string : string_vector)
-  {
-    std::vector<int8_t> vector;
-    std::istringstream iss(string);
-    std::string token;
-
-    while (std::getline(iss, token, ','))
-    {
-      try{
-          vector.push_back(std::stoi(token));
-      } catch(const std::exception& e) {
-          std::cerr << "Error converting string to int: " << e.what() << std::endl;
-      }
-    }
-    result.push_back(vector);
-  }
-
-  return result;
-}
-
-bool WhillJoy::check_speed_config(const std::vector<std::vector<int8_t>> &speed_config_vector)
-{
-  for (auto &&config : speed_config_vector)
-  {
-    if (config.size() != size_t(CONFIG_SIZE))return false;
-
-    // debug
-    // printf("%d, %d, %d, %d, %d, %d, %d, %d, %d\n", 
-    // config[0], config[1], config[2], config[3], config[4], config[5] ,config[6], config[7], config[8]);
-  }
-  return true;
 }
 
 int main(int argc, char *argv[])

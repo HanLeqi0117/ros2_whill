@@ -141,10 +141,10 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
   }
 
   // If button HOME is pressed
-  if (joy->buttons[Buttons::HOME] == 1)
-  {
-    set_power_();
-  }
+  // if (joy->buttons[Buttons::HOME] == 1)
+  // {
+  //   set_power_();
+  // }
 
 }
 

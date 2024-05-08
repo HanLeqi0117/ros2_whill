@@ -267,6 +267,7 @@ class WhillController : public rclcpp::Node
 
         // open uart communication
         initializeComWHILL(&whill_fd_, serial_port_);
+        power_on();
 
         // get speed profile from WHILL
         for (int i = 0; i < 6; ++i)

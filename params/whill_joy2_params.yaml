@@ -7,9 +7,11 @@ whill_joy2:
     # Sequentially, front(0 ~ 2): speed, acceleration, deceleration / back(3 ~ 5): speed, acceleration, deceleration / turn(6 ~ 8): speed, acceleration, deceleration
     # speed rad/s acceleration rad/ss deceleration rad/ss (Motor)
     # whill speed = motor speed * the radius(default: 0.1325m) of tire
-    # Speed limit: 8 ~ 60
-    # Acceleration limit: 10 ~ 90
-    # Deceleration limit: 10 ~ 160
+
+    # fm, fa, fd, rm, ra, rd, tm, ta, td  :config
+    # 8   10  40  8   10  40  8   10  40  :min
+    # ~   ~   ~   ~   ~   ~   ~   ~   ~
+    # 60  90  160 30  50  90  35  60  160 :max
     speed_profile_initial: [
-      45, 16, 90, 20, 24, 64, 18, 56, 72
+      34, 16, 90, 19, 24, 64, 21, 35, 72
     ]

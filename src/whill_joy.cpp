@@ -82,6 +82,11 @@ class WhillJoy : public rclcpp::Node
       // Subscriber
       this->joy_sub_ = create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&WhillJoy::ros_joy_callback_, this, std::placeholders::_1));
 
+      // Publisher
+      this->joy_pub_ = this->create_publisher<sensor_msgs::msg::Joy>("joy", rclcpp::QoS(10));
+
+      wall_timer_ = this->create_wall_timer(0.1s, std::bind(&WhillJoy::stop_pub_, this));
+
       // Client
       this->set_speed_profile_client_ = this->create_client<ros2_whill_interfaces::srv::SetSpeedProfile>("set_speed_profile_srv", rclcpp::QoS(5));
       this->set_power_client_ = this->create_client<ros2_whill_interfaces::srv::SetPower>("set_power_srv", rclcpp::QoS(5));
@@ -101,6 +106,7 @@ class WhillJoy : public rclcpp::Node
     // Parameters
     long unsigned int frequency_;
     double pressed_duration_;
+    bool stop_pressed_ = false;
 
     // Parameters
     bool power_on_ = false;
@@ -110,6 +116,12 @@ class WhillJoy : public rclcpp::Node
     // Subscriber
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
 
+    // Publisher
+    rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_pub_;
+
+    // Timer
+    rclcpp::TimerBase::SharedPtr wall_timer_;
+
     // Client
     rclcpp::Client<ros2_whill_interfaces::srv::SetSpeedProfile>::SharedPtr set_speed_profile_client_;
     rclcpp::Client<ros2_whill_interfaces::srv::SetPower>::SharedPtr set_power_client_;
@@ -118,6 +130,7 @@ class WhillJoy : public rclcpp::Node
     void set_speed_();
     void set_power_();
     void initial_speed_profiles_();    
+    void stop_pub_();
 };
 
 void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
@@ -127,18 +140,27 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
   // If Axis Up/Down is pressed
   if (joy->axes[Axes::ARROW_U_D] > 0.0)
   {
-    speed_profile_->fm1 += 5; 
-    speed_profile_->rm1 += 5;
-    speed_profile_->tm1 += 5;
+    speed_profile_->fm1 += 5;
     set_speed_();
   }
   else if (joy->axes[Axes::ARROW_U_D] < 0.0)
   {
-    speed_profile_->fm1 -= 5; 
-    speed_profile_->rm1 -= 5;
-    speed_profile_->tm1 -= 5;
+    speed_profile_->fm1 -= 5;
     set_speed_();
   }
+
+  // If Axis Left/Right is pressed
+  if (joy->axes[Axes::ARROW_L_R] > 0.0)
+  {
+    speed_profile_ ->tm1 += 5;
+    set_speed_();
+  }
+  else if (joy->axes[Axes::ARROW_L_R] < 0.0)
+  {
+     speed_profile_ -> tm1 -= 5;
+     set_speed_();
+  }
+  
 
   // If button HOME is pressed
   // if (joy->buttons[Buttons::HOME] == 1)
@@ -146,39 +168,44 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
   //   set_power_();
   // }
 
+  if (joy->buttons[Buttons::LEFT_STICK] == 1)
+  {
+    stop_pressed_ = true;
+    sensor_msgs::msg::Joy joy_msg;
+    joy_msg.axes = joy->axes;
+    joy_msg.buttons = joy->buttons;
+    joy_msg.header = joy->header;
+
+    joy_msg.buttons[Buttons::LEFT_STICK] = 0;
+    joy_msg.axes[Axes::LEFT_STICK_L_R] = 0.0;
+    joy_msg.axes[Axes::LEFT_STICK_U_D] = 0.0;
+
+  }
+
 }
 
 void WhillJoy::set_speed_()
 {
 
-  if (
-    speed_profile_->fm1 >= 60 ||
-    speed_profile_->rm1 >= 60 ||
-    speed_profile_->tm1 >= 60
-  )
+  if (speed_profile_->fm1 >= 60)
   {
-    speed_profile_->fm1 -= 5; 
-    speed_profile_->rm1 -= 5;
-    speed_profile_->tm1 -= 5;
-    RCLCPP_WARN(get_logger(), "One of the Speed among forward, reverse, turn is in maximum. Speed will be not set!!!");
-    rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
-
-    return;
+    speed_profile_->fm1 = 60;
+    RCLCPP_WARN(get_logger(), "Speed Forward is set to Maximum!!!");
   }
-
-  if (
-    speed_profile_->fm1 <= 8 ||
-    speed_profile_->rm1 <= 8 ||
-    speed_profile_->tm1 <= 8
-  )
+  if (speed_profile_->fm1 <= 8)
   {
-    speed_profile_->fm1 += 5; 
-    speed_profile_->rm1 += 5;
-    speed_profile_->tm1 += 5;
-    RCLCPP_WARN(get_logger(), "One of the Speed among forward, reverse, turn is in minimum. Speed will be not set!!!");
-    rclcpp::sleep_for(std::chrono::nanoseconds(sec_to_nano(pressed_duration_)));
-
-    return;
+    speed_profile_->fm1 = 8; 
+    RCLCPP_WARN(get_logger(), "Speed Forward is set to Minimum!!!");
+  }
+  if (speed_profile_->tm1 >= 35)
+  {
+    speed_profile_->fm1 = 35;
+    RCLCPP_WARN(get_logger(), "Speed Turn is set to Maximum!!!");
+  }
+  if (speed_profile_->tm1 <= 8)
+  {
+    speed_profile_->tm1 = 8;
+    RCLCPP_WARN(get_logger(), "Speed Turn is set to Minimum!!!");
   }
 
   auto req_future = this->set_speed_profile_client_->async_send_request(speed_profile_);

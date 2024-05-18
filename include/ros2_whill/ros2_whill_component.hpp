@@ -435,7 +435,6 @@ class WhillController : public rclcpp::Node
             sensor_msgs::msg::BatteryState battery_state_msg;
             sensor_msgs::msg::Joy joy_msg;
             sensor_msgs::msg::JointState joint_state_msg;
-            geometry_msgs::msg::TransformStamped odom_trans;
             nav_msgs::msg::Odometry odom_msg;
 
             // receive data from whill
@@ -458,10 +457,11 @@ class WhillController : public rclcpp::Node
             joint_state_pub_->publish(joint_state_msg);
 
             odom_msg = odom_.getROSOdometry();
-            odom_trans = odom_.getROSTransformStamped();
             
             if (publish_tf_)
             {
+                geometry_msgs::msg::TransformStamped odom_trans;
+                odom_trans = odom_.getROSTransformStamped();
                 odom_trans.header.stamp = this->get_clock()->now();
                 odom_trans.header.frame_id = odom_frame_id_;
                 odom_trans.child_frame_id = base_frame_id_;

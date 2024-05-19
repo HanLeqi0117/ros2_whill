@@ -144,12 +144,12 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
   }
 
   // If Axis Left/Right is pressed
-  if (joy->axes[Axes::ARROW_L_R] > 0.0)
+  if (joy->axes[Axes::ARROW_L_R] < 0.0)
   {
     speed_profile_ ->tm1 += 5;
     set_speed_();
   }
-  else if (joy->axes[Axes::ARROW_L_R] < 0.0)
+  else if (joy->axes[Axes::ARROW_L_R] > 0.0)
   {
      speed_profile_ -> tm1 -= 5;
      set_speed_();
@@ -174,7 +174,7 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
 
     this->joy_pub_->publish(joy_msg);
   }
-  else if (get_clock()->now().nanoseconds() - joy->header.stamp.nanosec < 2 * pow(10, 8))
+  else if (get_clock()->now().seconds() - (joy->header.stamp.sec + joy->header.stamp.nanosec * pow(10, -9)) < 0.05)
   {
     this->joy_pub_->publish(joy_msg);
   }

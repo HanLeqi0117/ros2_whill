@@ -80,12 +80,10 @@ class WhillJoy : public rclcpp::Node
       );
       
       // Subscriber
-      this->joy_sub_ = create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&WhillJoy::ros_joy_callback_, this, std::placeholders::_1));
+      this->joy_sub_ = create_subscription<sensor_msgs::msg::Joy>("joy_in", 10, std::bind(&WhillJoy::ros_joy_callback_, this, std::placeholders::_1));
 
       // Publisher
-      this->joy_pub_ = this->create_publisher<sensor_msgs::msg::Joy>("joy", rclcpp::QoS(10));
-
-      wall_timer_ = this->create_wall_timer(0.1s, std::bind(&WhillJoy::stop_pub_, this));
+      this->joy_pub_ = this->create_publisher<sensor_msgs::msg::Joy>("joy_out", rclcpp::QoS(10));
 
       // Client
       this->set_speed_profile_client_ = this->create_client<ros2_whill_interfaces::srv::SetSpeedProfile>("set_speed_profile_srv", rclcpp::QoS(5));
@@ -106,7 +104,6 @@ class WhillJoy : public rclcpp::Node
     // Parameters
     long unsigned int frequency_;
     double pressed_duration_;
-    bool stop_pressed_ = false;
 
     // Parameters
     bool power_on_ = false;
@@ -118,9 +115,6 @@ class WhillJoy : public rclcpp::Node
 
     // Publisher
     rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_pub_;
-
-    // Timer
-    rclcpp::TimerBase::SharedPtr wall_timer_;
 
     // Client
     rclcpp::Client<ros2_whill_interfaces::srv::SetSpeedProfile>::SharedPtr set_speed_profile_client_;
@@ -168,18 +162,21 @@ void WhillJoy::ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy)
   //   set_power_();
   // }
 
+  sensor_msgs::msg::Joy joy_msg;
+  joy_msg.axes = joy->axes;
+  joy_msg.buttons = joy->buttons;
+  joy_msg.header = joy->header;
+
   if (joy->buttons[Buttons::LEFT_STICK] == 1)
   {
-    stop_pressed_ = true;
-    sensor_msgs::msg::Joy joy_msg;
-    joy_msg.axes = joy->axes;
-    joy_msg.buttons = joy->buttons;
-    joy_msg.header = joy->header;
-
-    joy_msg.buttons[Buttons::LEFT_STICK] = 0;
     joy_msg.axes[Axes::LEFT_STICK_L_R] = 0.0;
     joy_msg.axes[Axes::LEFT_STICK_U_D] = 0.0;
 
+    this->joy_pub_->publish(joy_msg);
+  }
+  else if (get_clock()->now().nanoseconds() - joy->header.stamp.nanosec < 2 * pow(10, 8))
+  {
+    this->joy_pub_->publish(joy_msg);
   }
 
 }

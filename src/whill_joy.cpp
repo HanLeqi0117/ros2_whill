@@ -86,8 +86,8 @@ class WhillJoy : public rclcpp::Node
       this->joy_pub_ = this->create_publisher<sensor_msgs::msg::Joy>("joy_out", rclcpp::QoS(10));
 
       // Client
-      this->set_speed_profile_client_ = this->create_client<ros2_whill_interfaces::srv::SetSpeedProfile>("set_speed_profile_srv", rclcpp::QoS(5));
-      this->set_power_client_ = this->create_client<ros2_whill_interfaces::srv::SetPower>("set_power_srv", rclcpp::QoS(5));
+      this->set_speed_profile_client_ = this->create_client<ros2_whill_interfaces::srv::SetSpeedProfile>("set_speed_profile_srv");
+      this->set_power_client_ = this->create_client<ros2_whill_interfaces::srv::SetPower>("set_power_srv");
 
       this->set_speed_profile_client_->wait_for_service();
       this->set_power_client_->wait_for_service();
@@ -272,7 +272,6 @@ int main(int argc, char *argv[])
     // 宣言されていないパラメータは設定できないようにする。このオプションはtrueの場合、宣言されていないパラメータでも直接に設定できる
     options.allow_undeclared_parameters(false);
     options.automatically_declare_parameters_from_overrides(false);
-    options.clock_type(RCL_SYSTEM_TIME);
     
     // プログラムの処理を終わらないようにするため、プロセスをスピンさせる、引数は：Nodeのオブジェクトのポインター
     rclcpp::spin(std::make_shared<WhillJoy>(options));

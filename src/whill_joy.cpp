@@ -5,8 +5,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "geometry_msgs/msg/twist.hpp"
-#include "ros2_whill_interfaces/srv/set_speed_profile.hpp"
-#include "ros2_whill_interfaces/srv/set_power.hpp"
+#include "ros2_whill/srv/set_speed_profile.hpp"
+#include "ros2_whill/srv/set_power.hpp"
 
 #define CONFIG_SIZE 9
 
@@ -86,8 +86,8 @@ class WhillJoy : public rclcpp::Node
       this->joy_pub_ = this->create_publisher<sensor_msgs::msg::Joy>("joy_out", rclcpp::QoS(10));
 
       // Client
-      this->set_speed_profile_client_ = this->create_client<ros2_whill_interfaces::srv::SetSpeedProfile>("set_speed_profile_srv");
-      this->set_power_client_ = this->create_client<ros2_whill_interfaces::srv::SetPower>("set_power_srv");
+      this->set_speed_profile_client_ = this->create_client<ros2_whill::srv::SetSpeedProfile>("set_speed_profile_srv");
+      this->set_power_client_ = this->create_client<ros2_whill::srv::SetPower>("set_power_srv");
 
       this->set_speed_profile_client_->wait_for_service();
       this->set_power_client_->wait_for_service();
@@ -107,7 +107,7 @@ class WhillJoy : public rclcpp::Node
 
     // Parameters
     bool power_on_ = false;
-    ros2_whill_interfaces::srv::SetSpeedProfile::Request::SharedPtr speed_profile_;
+    ros2_whill::srv::SetSpeedProfile::Request::SharedPtr speed_profile_;
     std::vector<int64_t> speed_profile_initial_;
 
     // Subscriber
@@ -117,8 +117,8 @@ class WhillJoy : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_pub_;
 
     // Client
-    rclcpp::Client<ros2_whill_interfaces::srv::SetSpeedProfile>::SharedPtr set_speed_profile_client_;
-    rclcpp::Client<ros2_whill_interfaces::srv::SetPower>::SharedPtr set_power_client_;
+    rclcpp::Client<ros2_whill::srv::SetSpeedProfile>::SharedPtr set_speed_profile_client_;
+    rclcpp::Client<ros2_whill::srv::SetPower>::SharedPtr set_power_client_;
 
     void ros_joy_callback_(sensor_msgs::msg::Joy::ConstSharedPtr joy);
     void set_speed_();
@@ -219,7 +219,7 @@ void WhillJoy::set_speed_()
 
 void WhillJoy::initial_speed_profiles_()
 {
-  speed_profile_ = std::make_shared<ros2_whill_interfaces::srv::SetSpeedProfile::Request>();
+  speed_profile_ = std::make_shared<ros2_whill::srv::SetSpeedProfile::Request>();
 
   speed_profile_->fm1 = speed_profile_initial_[0];
   speed_profile_->fa1 = speed_profile_initial_[1];
@@ -244,7 +244,7 @@ void WhillJoy::set_power_()
 {
   if (power_on_ == true)
   {
-    auto req = std::make_shared<ros2_whill_interfaces::srv::SetPower::Request>();
+    auto req = std::make_shared<ros2_whill::srv::SetPower::Request>();
     req->p0 = 0;
     set_power_client_->async_send_request(req);
     power_on_ = false;
@@ -252,7 +252,7 @@ void WhillJoy::set_power_()
   }
   else
   {
-    auto req = std::make_shared<ros2_whill_interfaces::srv::SetPower::Request>();
+    auto req = std::make_shared<ros2_whill::srv::SetPower::Request>();
     req->p0 = 1;
     set_power_client_->async_send_request(req);
     power_on_ = true;

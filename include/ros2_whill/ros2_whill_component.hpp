@@ -49,12 +49,12 @@ SOFTWARE.
 #include <sensor_msgs/msg/joy.hpp>
 #include <std_srvs/srv/empty.hpp>
 
-#include "./odom.h"
-#include "ros2_whill_interfaces/msg/whill_model_c.hpp"
-#include "ros2_whill_interfaces/msg/whill_speed_profile.hpp"
-#include "ros2_whill_interfaces/srv/set_battery_voltage_out.hpp"
-#include "ros2_whill_interfaces/srv/set_power.hpp"
-#include "ros2_whill_interfaces/srv/set_speed_profile.hpp"
+#include "ros2_whill/odom.h"
+#include "ros2_whill/msg/whill_model_c.hpp"
+#include "ros2_whill/msg/whill_speed_profile.hpp"
+#include "ros2_whill/srv/set_battery_voltage_out.hpp"
+#include "ros2_whill/srv/set_power.hpp"
+#include "ros2_whill/srv/set_speed_profile.hpp"
 #include "whill_modelc/com_whill.h"
 
 #define MAX_EVENTS (10)
@@ -76,7 +76,7 @@ class WhillController : public rclcpp::Node
 {
   private:
     // Publisher to send Whill State
-    rclcpp::Publisher<ros2_whill_interfaces::msg::WhillModelC>::SharedPtr state_pub_;
+    rclcpp::Publisher<ros2_whill::msg::WhillModelC>::SharedPtr state_pub_;
     // Publisher to send Whill JoyStick State
     rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_pub_;
     // Publisher to send Whill Joint State 
@@ -88,7 +88,7 @@ class WhillController : public rclcpp::Node
     // Publisher to send Whill Odometry 
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
     // Publisher to send Whill Speed Profile 
-    rclcpp::Publisher<ros2_whill_interfaces::msg::WhillSpeedProfile>::SharedPtr speed_prof_pub_;
+    rclcpp::Publisher<ros2_whill::msg::WhillSpeedProfile>::SharedPtr speed_prof_pub_;
 
     // Whill JoyStick Controller Subscription
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
@@ -98,11 +98,11 @@ class WhillController : public rclcpp::Node
     // Service to clear Odometry DATA
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr clear_odom_srv_;
     // Service to set Speed Profile
-    rclcpp::Service<ros2_whill_interfaces::srv::SetSpeedProfile>::SharedPtr set_speed_prof_srv_;
+    rclcpp::Service<ros2_whill::srv::SetSpeedProfile>::SharedPtr set_speed_prof_srv_;
     // Service to set power on
-    rclcpp::Service<ros2_whill_interfaces::srv::SetPower>::SharedPtr set_power_srv_;
+    rclcpp::Service<ros2_whill::srv::SetPower>::SharedPtr set_power_srv_;
     // Service to set the output of Voltage of the battery
-    rclcpp::Service<ros2_whill_interfaces::srv::SetBatteryVoltageOut>::SharedPtr set_battery_voltage_out_srv_;
+    rclcpp::Service<ros2_whill::srv::SetBatteryVoltageOut>::SharedPtr set_battery_voltage_out_srv_;
 
     // TransformBroadcaster to send the Transform from base_link to odom
     tf2_ros::TransformBroadcaster odom_broadcaster_;
@@ -254,7 +254,7 @@ class WhillController : public rclcpp::Node
 
         // pub initialize
         state_pub_ =
-            this->create_publisher<ros2_whill_interfaces::msg::WhillModelC>("modelc_state", rclcpp::QoS(10));
+            this->create_publisher<ros2_whill::msg::WhillModelC>("modelc_state", rclcpp::QoS(10));
         joy_pub_ = this->create_publisher<sensor_msgs::msg::Joy>("states/joy", rclcpp::QoS(10));
         joint_state_pub_ =
             this->create_publisher<sensor_msgs::msg::JointState>("states/joint_state", rclcpp::QoS(10));
@@ -262,7 +262,7 @@ class WhillController : public rclcpp::Node
         battery_state_pub_ =
             this->create_publisher<sensor_msgs::msg::BatteryState>("states/battery_state", rclcpp::QoS(10));
         odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", rclcpp::QoS(10));
-        speed_prof_pub_ = this->create_publisher<ros2_whill_interfaces::msg::WhillSpeedProfile>("speed_profile",
+        speed_prof_pub_ = this->create_publisher<ros2_whill::msg::WhillSpeedProfile>("speed_profile",
                                                                                                 rclcpp::QoS(10));
 
         // open uart communication
@@ -279,7 +279,7 @@ class WhillController : public rclcpp::Node
             size_t len = recvDataWHILL(whill_fd_, recv_buf_);
             if (recv_buf_[0] == DATASET_NUM_ZERO && len == 12)
             {
-                ros2_whill_interfaces::msg::WhillSpeedProfile speed_prof_msg;
+                ros2_whill::msg::WhillSpeedProfile speed_prof_msg;
                 speed_prof_msg.s1 = int(recv_buf_[1] & 0xff);
                 speed_prof_msg.fm1 = int(recv_buf_[2] & 0xff);
                 speed_prof_msg.fa1 = int(recv_buf_[3] & 0xff);
@@ -332,11 +332,11 @@ class WhillController : public rclcpp::Node
                 return true;
             });
 
-        set_speed_prof_srv_ = this->create_service<ros2_whill_interfaces::srv::SetSpeedProfile>(
+        set_speed_prof_srv_ = this->create_service<ros2_whill::srv::SetSpeedProfile>(
             "set_speed_profile_srv",
             [this](const std::shared_ptr<rmw_request_id_t> req_header,
-                   const ros2_whill_interfaces::srv::SetSpeedProfile::Request::SharedPtr req,
-                   const ros2_whill_interfaces::srv::SetSpeedProfile::Response::SharedPtr res) {
+                   const ros2_whill::srv::SetSpeedProfile::Request::SharedPtr req,
+                   const ros2_whill::srv::SetSpeedProfile::Response::SharedPtr res) {
                 (void)req_header;
                 // value check
                 if (0 <= req->s1 && req->s1 <= 5 && 8 <= req->fm1 && req->fm1 <= 80 && 10 <= req->fa1 &&
@@ -368,10 +368,10 @@ class WhillController : public rclcpp::Node
                 }
             });
 
-        set_power_srv_ = this->create_service<ros2_whill_interfaces::srv::SetPower>(
+        set_power_srv_ = this->create_service<ros2_whill::srv::SetPower>(
             "set_power_srv", [this](const std::shared_ptr<rmw_request_id_t> req_header,
-                                           const ros2_whill_interfaces::srv::SetPower::Request::SharedPtr req,
-                                           const ros2_whill_interfaces::srv::SetPower::Response::SharedPtr res) {
+                                           const ros2_whill::srv::SetPower::Request::SharedPtr req,
+                                           const ros2_whill::srv::SetPower::Response::SharedPtr res) {
                 (void)req_header;
 
                 // power off
@@ -404,11 +404,11 @@ class WhillController : public rclcpp::Node
                 }
             });
 
-        set_battery_voltage_out_srv_ = this->create_service<ros2_whill_interfaces::srv::SetBatteryVoltageOut>(
+        set_battery_voltage_out_srv_ = this->create_service<ros2_whill::srv::SetBatteryVoltageOut>(
             "set_battery_voltage_out_srv",
             [this](const std::shared_ptr<rmw_request_id_t> req_header,
-                   const ros2_whill_interfaces::srv::SetBatteryVoltageOut::Request::SharedPtr req,
-                   const ros2_whill_interfaces::srv::SetBatteryVoltageOut::Response::SharedPtr res) {
+                   const ros2_whill::srv::SetBatteryVoltageOut::Request::SharedPtr req,
+                   const ros2_whill::srv::SetBatteryVoltageOut::Response::SharedPtr res) {
                 (void)req_header;
                 if (req->v0 == 0 || req->v0 == 1)
                 {
@@ -430,7 +430,7 @@ class WhillController : public rclcpp::Node
 
         // main timer config
         main_timer_ = this->create_wall_timer(10ms, [&]() {
-            ros2_whill_interfaces::msg::WhillModelC state_msg;
+            ros2_whill::msg::WhillModelC state_msg;
             sensor_msgs::msg::Imu imu_msg;
             sensor_msgs::msg::BatteryState battery_state_msg;
             sensor_msgs::msg::Joy joy_msg;
@@ -479,10 +479,10 @@ class WhillController : public rclcpp::Node
      * @brief Receive data from whill, and parse it. This data is stored in
      * state_msg.
      *
-     * @param state_msg [in] ros2_whill_interfaces::msg::WhillModelC
+     * @param state_msg [in] ros2_whill::msg::WhillModelC
      * @return unsigned int elapsed time
      */
-    unsigned int receive_whill_data(ros2_whill_interfaces::msg::WhillModelC &state_msg)
+    unsigned int receive_whill_data(ros2_whill::msg::WhillModelC &state_msg)
     {
         size_t len = recvDataWHILL(whill_fd_, recv_buf_);
         if (recv_buf_[0] == DATASET_NUM_ONE && (len == DATASET_LEN_OLD || len == DATASET_LEN_NEW))
@@ -544,9 +544,9 @@ class WhillController : public rclcpp::Node
      * @brief Construct ros imu message from state msg
      *
      * @param imu_msg [in/out] sensor_msgs::msg::Imu
-     * @param state_msg [in] ros2_whill_interfaces::msg::WhillModelC
+     * @param state_msg [in] ros2_whill::msg::WhillModelC
      */
-    void construct_imu_msg(sensor_msgs::msg::Imu &imu_msg, ros2_whill_interfaces::msg::WhillModelC &state_msg)
+    void construct_imu_msg(sensor_msgs::msg::Imu &imu_msg, ros2_whill::msg::WhillModelC &state_msg)
     {
         imu_msg.header.stamp = this->get_clock()->now();
         imu_msg.header.frame_id = imu_frame_id_;
@@ -563,10 +563,10 @@ class WhillController : public rclcpp::Node
      * @brief Construct ros BatteryState message from state msg
      *
      * @param battery_state_msg [in/out] sensor_msgs::msg::BatteryState
-     * @param state_msg [in] ros2_whill_interfaces::msg::WhillModelC
+     * @param state_msg [in] ros2_whill::msg::WhillModelC
      */
     void construct_battery_state_msg(sensor_msgs::msg::BatteryState &battery_state_msg,
-                                     ros2_whill_interfaces::msg::WhillModelC &state_msg)
+                                     ros2_whill::msg::WhillModelC &state_msg)
     {
         battery_state_msg.voltage = 25.2;                                 //[V]
         battery_state_msg.current = -state_msg.battery_current / 1000.0f; // mA -> A
@@ -584,9 +584,9 @@ class WhillController : public rclcpp::Node
      * @brief Construct ros joy message from state msg
      *
      * @param joy_msg [in/out] sensor_msgs::msg::Joy
-     * @param state_msg [in] ros2_whill_interfaces::msg::WhillModelC
+     * @param state_msg [in] ros2_whill::msg::WhillModelC
      */
-    void construct_joy_msg(sensor_msgs::msg::Joy &joy_msg, ros2_whill_interfaces::msg::WhillModelC &state_msg)
+    void construct_joy_msg(sensor_msgs::msg::Joy &joy_msg, ros2_whill::msg::WhillModelC &state_msg)
     {
         joy_msg.header.stamp = this->get_clock()->now();
         joy_msg.axes.resize(2);
@@ -598,11 +598,11 @@ class WhillController : public rclcpp::Node
      * @brief Construct ros JointState message from state msg
      *
      * @param joint_state_msg [in/out] sensor_msgs::msg::JointState
-     * @param state_msg [in] ros2_whill_interfaces::msg::WhillModelC
+     * @param state_msg [in] ros2_whill::msg::WhillModelC
      * @param time_diff_ms [in] elapsed time
      */
     void construct_joint_state_msg(sensor_msgs::msg::JointState &joint_state_msg,
-                                   ros2_whill_interfaces::msg::WhillModelC &state_msg, unsigned int time_diff_ms)
+                                   ros2_whill::msg::WhillModelC &state_msg, unsigned int time_diff_ms)
     {
         joint_state_msg.header.stamp = this->get_clock()->now();
         joint_state_msg.name.resize(2);

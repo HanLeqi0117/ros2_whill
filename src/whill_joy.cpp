@@ -204,13 +204,13 @@ void WhillJoy::set_speed_()
     speed_profile_->tm1 = 8;
     RCLCPP_WARN(get_logger(), "Speed Turn is set to Minimum!!!");
   }
-
+  
   auto req_future = this->set_speed_profile_client_->async_send_request(speed_profile_);
 
   float l_scale, a_scale;
 
   l_scale = speed_profile_->fm1 * 0.1f * 1000 / 3600;
-  a_scale = speed_profile_->tm1 * 0.1f * 1000 / 3600 / 0.225;
+  a_scale = speed_profile_->tm1 * 0.1f * 1000 / 3600;
 
   RCLCPP_INFO(this->get_logger(), "Linear Velocity Maximum: %f m/s, Angular velocity Maximum: %f rad/s", l_scale, a_scale);
   
